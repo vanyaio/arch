@@ -61,22 +61,34 @@ int main( void ) {
 
 	add11<<<1, 1>>>(a, b, c);
 	cudaDeviceSynchronize();
+	printf("1, 1\n");
+	for (int i=0; i<N; i++) {
+		printf( "%d + %d = %d\n", a[i], b[i], c[i] );
+	}
 
 	add1n<<<1, N>>>(a, b, c);
 	cudaDeviceSynchronize();
+	printf("1, N\n");
+	for (int i=0; i<N; i++) {
+		printf( "%d + %d = %d\n", a[i], b[i], c[i] );
+	}
 
 	addn1<<<N, 1>>>(a, b, c);
 	cudaDeviceSynchronize();
+	printf("N, 1\n");
+	for (int i=0; i<N; i++) {
+		printf( "%d + %d = %d\n", a[i], b[i], c[i] );
+	}
 
 	int blockSize = 256;
 	int numBlocks = (N + blockSize - 1) / blockSize;
 	add<<<numBlocks, blockSize>>>(a, b, c);
 	cudaDeviceSynchronize();
-
-	// display the results
+	printf("<<<...>>>\n");
 	for (int i=0; i<N; i++) {
 		printf( "%d + %d = %d\n", a[i], b[i], c[i] );
 	}
+
 
 	cudaFree(a);
 	cudaFree(b);
