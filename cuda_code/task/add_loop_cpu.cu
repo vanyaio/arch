@@ -19,50 +19,70 @@
 #define N   10
 
 __global__
-void add( int *a, int *b, int *c ) {
-    int tid = 0;    // this is CPU zero, so we start at zero
-    while (tid < N) {
-		/*
-		 * printf("i = %d, a = %d, b = %d\n", tid, a[tid], b[tid]);
-		 */
-        c[tid] = a[tid] + b[tid];
-        tid += 1;   // we have one CPU, so we increment by one
+void add11( int *a, int *b, int *c ) {
+    int i = 0;    // this is CPU zero, so we start at zero
+    while (i < N) {
+        c[i] = a[i] + b[i];
+        i += 1;   // we have one CPU, so we increment by one
     }
 }
 
+__global__
+void addn1( int *a, int *b, int *c ) {
+	int i = blockIdx.x;
+	c[i] = a[i] + b[i];
+}
+
+__global__
+void add1n( int *a, int *b, int *c ) {
+	int i = threadIdx.x;
+	c[i] = a[i] + b[i];
+}
+
+__global__
+void add( int *a, int *b, int *c ) {
+	int index = threadIdx.x;
+	int stride = blockDim.x;
+	for (int i = index; i < N; i += stride)
+		c[i] = a[i] + b[i];
+}
+
 int main( void ) {
-    int a[N], b[N], c[N];
+	int *a, *b, *c;
 
-    // fill the arrays 'a' and 'b' on the CPU
-    for (int i=0; i<N; i++) {
-        a[i] = -i;
-        b[i] = i * i;
-    }
+	// fill the arrays 'a' and 'b' on the CPU
+	cudaMallocManaged(&a, N*sizeof(int));
+	cudaMallocManaged(&b, N*sizeof(int));
+	cudaMallocManaged(&c, N*sizeof(int));
+	for (int i=0; i<N; i++) {
+		a[i] = -i;
+		b[i] = i * i;
+	}
 
-	int *ad, *bd, *cd;
-	cudaMalloc((void**)ad, sizeof(int) * N);
-	cudaMalloc((void**)bd, sizeof(int) * N);
-	cudaMalloc((void**)cd, sizeof(int) * N);
-	cudaMemcpy(ad, a, sizeof(int) * N, cudaMemcpyHostToDevice);
-	cudaMemcpy(bd, b, sizeof(int) * N, cudaMemcpyHostToDevice);
-	cudaMemcpy(cd, c, sizeof(int) * N, cudaMemcpyHostToDevice);
-
-    add<<<1, 1>>>(ad, bd, cd);
+	add11<<<1, 1>>>(a, b, c);
 	cudaDeviceSynchronize();
 
-	/*
-     * for (int i=0; i<N; i++) {
-     *     a[i] = 0;
-     *     b[i] = 0;
-     * }
-	 */
-	cudaMemcpy(a, ad, sizeof(int) * N, cudaMemcpyDeviceToHost);
-	cudaMemcpy(b, bd, sizeof(int) * N, cudaMemcpyDeviceToHost);
-	cudaMemcpy(c, cd, sizeof(int) * N, cudaMemcpyDeviceToHost);
-    // display the results
-    for (int i=0; i<N; i++) {
-        printf( "%d + %d = %d\n", a[i], b[i], c[i] );
-    }
+	add1n<<<1, 1>>>(a, b, c);
+	cudaDeviceSynchronize();
 
-    return 0;
+	addn1<<<1, 1>>>(a, b, c);
+	cudaDeviceSynchronize();
+
+	addn1<<<1, 1>>>(a, b, c);
+	cudaDeviceSynchronize();
+
+	int blockSize = 256;
+	int numBlocks = (N + blockSize - 1) / blockSize;
+	add<<<numBlocks, blockSize>>>(a, b, c);
+	cudaDeviceSynchronize();
+
+	// display the results
+	for (int i=0; i<N; i++) {
+		printf( "%d + %d = %d\n", a[i], b[i], c[i] );
+	}
+
+	cudaFree(a);
+	cudaFree(b);
+	cudaFree(c);
+	return 0;
 }
