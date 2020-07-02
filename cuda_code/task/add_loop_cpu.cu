@@ -20,10 +20,10 @@
 
 __global__
 void add11( int *a, int *b, int *c ) {
-    int i = 0;    // this is CPU zero, so we start at zero
+    int i = 0;
     while (i < N) {
         c[i] = a[i] + b[i];
-        i += 1;   // we have one CPU, so we increment by one
+        i += 1;
     }
 }
 
@@ -50,7 +50,6 @@ void add( int *a, int *b, int *c ) {
 int main( void ) {
 	int *a, *b, *c;
 
-	// fill the arrays 'a' and 'b' on the CPU
 	cudaMallocManaged(&a, N*sizeof(int));
 	cudaMallocManaged(&b, N*sizeof(int));
 	cudaMallocManaged(&c, N*sizeof(int));
