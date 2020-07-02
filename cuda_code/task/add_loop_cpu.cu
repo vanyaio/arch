@@ -41,8 +41,8 @@ void add1n( int *a, int *b, int *c ) {
 
 __global__
 void add( int *a, int *b, int *c ) {
-	int index = threadIdx.x;
-	int stride = blockDim.x;
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+	int stride = blockDim.x * gridDim.x;
 	for (int i = index; i < N; i += stride)
 		c[i] = a[i] + b[i];
 }
