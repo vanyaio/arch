@@ -62,13 +62,10 @@ int main( void ) {
 	add11<<<1, 1>>>(a, b, c);
 	cudaDeviceSynchronize();
 
-	add1n<<<1, 1>>>(a, b, c);
+	add1n<<<1, N>>>(a, b, c);
 	cudaDeviceSynchronize();
 
-	addn1<<<1, 1>>>(a, b, c);
-	cudaDeviceSynchronize();
-
-	addn1<<<1, 1>>>(a, b, c);
+	addn1<<<N, 1>>>(a, b, c);
 	cudaDeviceSynchronize();
 
 	int blockSize = 256;
