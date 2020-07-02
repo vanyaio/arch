@@ -1,149 +1,74 @@
 #include "stdio.h"
-// Matrices are stored in row-major order:
-// M(row, col) = *(M.elements + row * M.stride + col)
 typedef struct {
-	int width;
-	int height;
-	int stride; 
-	float* elements;
-} Matrix;
+	int N;
+	int M;
+	int step; 
+	float* m;
+} mat;
 
-// Get a matrix element
-__device__ float GetElement(const Matrix A, int row, int col)
-{
-	return A.elements[row * A.stride + col];
-}
 
-// Set a matrix element
-__device__ void SetElement(Matrix A, int row, int col, float value)
-{
-	A.elements[row * A.stride + col] = value;
-}
+#define get_elem(A, r, c) (A.m[r * A.step + c])
+/*
+ * __device__ float GetElement(const mat A, int row, int col)
+ * {
+ *     return A.m[row * A.step + col];
+ * }
+ */
 
-// Thread block size
+#define set_elem(A, r, c, val) A.m[r * A.step + c] = val
+/*
+ * __device__ void SetElement(mat A, int row, int col, float value)
+ * {
+ *     A.m[row * A.step + col] = value;
+ * }
+ */
+
 #define BLOCK_SIZE 2
 
-// Get the BLOCK_SIZExBLOCK_SIZE sub-matrix Asub of A that is
-// located col sub-matrices to the right and row sub-matrices down
-// from the upper-left corner of A
-__device__ Matrix GetSubMatrix(Matrix A, int row, int col) 
+__device__ mat get_submat(mat A, int row, int col) 
 {
-	Matrix Asub;
-	Asub.width    = BLOCK_SIZE;
-	Asub.height   = BLOCK_SIZE;
-	Asub.stride   = A.stride;
-	Asub.elements = &A.elements[A.stride * BLOCK_SIZE * row + BLOCK_SIZE * col];
+	mat Asub;
+	Asub.M = BLOCK_SIZE;
+	Asub.N = BLOCK_SIZE;
+	Asub.step = A.step;
+	Asub.m = &A.m[A.step * BLOCK_SIZE * row + BLOCK_SIZE * col];
 	return Asub;
 }
 
 
-// Forward declaration of the matrix multiplication kernel
-__global__ void MatMulKernel(const Matrix, const Matrix, Matrix);
-
-// Matrix multiplication - Host code
-// Matrix dimensions are assumed to be multiples of BLOCK_SIZE
-void MatMul(const Matrix A, const Matrix B, Matrix C)
+__global__ void matmul(mat A, mat B, mat C)
 {
-	// Load A and B to device memory
-	Matrix d_A;
-	d_A.width = d_A.stride = A.width; d_A.height = A.height;
-	size_t size = A.width * A.height * sizeof(float);
-	cudaMalloc(&d_A.elements, size);
-	cudaMemcpy(d_A.elements, A.elements, size,
-	cudaMemcpyHostToDevice);
-	Matrix d_B;
-	d_B.width = d_B.stride = B.width; d_B.height = B.height;
-	size = B.width * B.height * sizeof(float);
-	cudaMalloc(&d_B.elements, size);
-	cudaMemcpy(d_B.elements, B.elements, size,
-	cudaMemcpyHostToDevice);
-
-	// Allocate C in device memory
-	Matrix d_C;
-	d_C.width = d_C.stride = C.width; d_C.height = C.height;
-	size = C.width * C.height * sizeof(float);
-	cudaMalloc(&d_C.elements, size);
-
-	// Invoke kernel
-	dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
-	dim3 dimGrid(B.width / dimBlock.x, A.height / dimBlock.y);
-	MatMulKernel<<<dimGrid, dimBlock>>>(d_A, d_B, d_C);
-
-	// Read C from device memory
-	cudaMemcpy(C.elements, d_C.elements, size, cudaMemcpyDeviceToHost);
-	
-	int N = C.height, M = C.width;
-	for (int i = 0; i < N; i++) {
-		for (int j = 0; j < M; j++) {
-			float elem = C.elements[i * C.stride + j];
-			printf("%f ", elem);
-		}
-		printf("\n");
-	}
-
-	// Free device memory
-	cudaFree(d_A.elements);
-	cudaFree(d_B.elements);
-	cudaFree(d_C.elements);
-}
-
-// Matrix multiplication kernel called by MatMul()
-__global__ void MatMulKernel(Matrix A, Matrix B, Matrix C)
-{
-	// Block row and column
-	int blockRow = blockIdx.y;
 	int blockCol = blockIdx.x;
+	int blockRow = blockIdx.y;
 
-	// Each thread block computes one sub-matrix Csub of C
-	Matrix Csub = GetSubMatrix(C, blockRow, blockCol);
+	mat Csub = get_submat(C, blockRow, blockCol);
 
-	// Each thread computes one element of Csub
-	// by accumulating results into Cvalue
-	float Cvalue = 0;
-
-	// Thread row and column within Csub
 	int row = threadIdx.y;
 	int col = threadIdx.x;
+	float cij = 0;
+	for (int m = 0; m < (A.M / BLOCK_SIZE); ++m) {
+		mat Asub = get_submat(A, blockRow, m);
 
-	// Loop over all the sub-matrices of A and B that are
-	// required to compute Csub
-	// Multiply each pair of sub-matrices together
-	// and accumulate the results
-	for (int m = 0; m < (A.width / BLOCK_SIZE); ++m) {
-		// Get sub-matrix Asub of A
-		Matrix Asub = GetSubMatrix(A, blockRow, m);
+		mat Bsub = get_submat(B, m, blockCol);
 
-		// Get sub-matrix Bsub of B
-		Matrix Bsub = GetSubMatrix(B, m, blockCol);
-
-		// Shared memory used to store Asub and Bsub respectively
 		__shared__ float As[BLOCK_SIZE][BLOCK_SIZE];
 		__shared__ float Bs[BLOCK_SIZE][BLOCK_SIZE];
 
-		// Load Asub and Bsub from device memory to shared memory
-		// Each thread loads one element of each sub-matrix
-		As[row][col] = GetElement(Asub, row, col);
-		Bs[row][col] = GetElement(Bsub, row, col);
+		As[row][col] = get_elem(Asub, row, col);
+		Bs[row][col] = get_elem(Bsub, row, col);
 
-		// Synchronize to make sure the sub-matrices are loaded
-		// before starting the computation
 		__syncthreads();
-		// Multiply Asub and Bsub together
 		for (int e = 0; e < BLOCK_SIZE; ++e)
-		Cvalue += As[row][e] * Bs[e][col];
+		cij += As[row][e] * Bs[e][col];
 
-		// Synchronize to make sure that the preceding
-		// computation is done before loading two new
-		// sub-matrices of A and B in the next iteration
 		__syncthreads();
 	}
 
-	// Write Csub to device memory
-	// Each thread writes one element
-	SetElement(Csub, row, col, Cvalue);
+	set_elem(Csub, row, col, cij);
 }
 
-int main() {
+int main()
+{
 	float m1[] = {1,2,3,4,
 				5,6,7,8,
 				9,10,11,12,
@@ -156,10 +81,42 @@ int main() {
 
 	float *m3 = (float*)malloc(4 * 4 * sizeof(float));
 
-	Matrix A = { .width = 4, .height = 4, .stride = 4, .elements = m1 };
-	Matrix B = { .width = 4, .height = 4, .stride = 4, .elements = m2 };
-	Matrix C = { .width = 4, .height = 4, .stride = 4, .elements = m3 };
-	MatMul(A, B, C);
+	mat A = { .N = 4, .M = 4, .step = 4, .m = m1 };
+	mat B = { .N = 4, .M = 4, .step = 4, .m = m2 };
+	mat C = { .N = 4, .M = 4, .step = 4, .m = m3 };
 
-	return 0;
+	mat d_A = { .N = A.N, .M = A.M, .step = A.M };
+	int size = A.M * A.N * sizeof(float);
+	cudaMalloc(&d_A.m, size);
+	cudaMemcpy(d_A.m, A.m, size, cudaMemcpyHostToDevice);
+
+	mat d_B = { .N = B.N, .M = B.M, .step = B.M };
+	size = B.M * B.N * sizeof(float);
+	cudaMalloc(&d_B.m, size);
+	cudaMemcpy(d_B.m, B.m, size, cudaMemcpyHostToDevice);
+
+	mat d_C = {  .N = C.N, .M = C.M, .step = C.M};
+	size = C.M * C.N * sizeof(float);
+	cudaMalloc(&d_C.m, size);
+
+	dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
+	dim3 dimGrid(B.M / dimBlock.x, A.N / dimBlock.y);
+	matmul<<<dimGrid, dimBlock>>>(d_A, d_B, d_C);
+
+	cudaMemcpy(C.m, d_C.m, size, cudaMemcpyDeviceToHost);
+	
+	int N = C.N, M = C.M;
+	for (int i = 0; i < N; i++) {
+		for (int j = 0; j < M; j++) {
+			float elem = C.m[i * C.step + j];
+			printf("%f ", elem);
+		}
+		printf("\n");
+	}
+
+	cudaFree(d_A.m);
+	cudaFree(d_B.m);
+	cudaFree(d_C.m);
+	free(m3);
 }
+
