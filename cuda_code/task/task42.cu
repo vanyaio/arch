@@ -6,23 +6,8 @@ typedef struct {
 	float* m;
 } mat;
 
-
 #define get_elem(A, r, c) (A.m[r * A.step + c])
-/*
- * __device__ float GetElement(const mat A, int row, int col)
- * {
- *     return A.m[row * A.step + col];
- * }
- */
-
 #define set_elem(A, r, c, val) A.m[r * A.step + c] = val
-/*
- * __device__ void SetElement(mat A, int row, int col, float value)
- * {
- *     A.m[row * A.step + col] = value;
- * }
- */
-
 #define BLOCK_SIZE 2
 
 __device__ mat get_submat(mat A, int row, int col) 
@@ -34,7 +19,6 @@ __device__ mat get_submat(mat A, int row, int col)
 	Asub.m = &A.m[A.step * BLOCK_SIZE * row + BLOCK_SIZE * col];
 	return Asub;
 }
-
 
 __global__ void matmul(mat A, mat B, mat C)
 {
