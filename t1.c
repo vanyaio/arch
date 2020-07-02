@@ -41,7 +41,7 @@ int main(int argc, char **argv)
 	if (!rank)
 	{
 		printf("master->slave\n");
-		for (int id = 1; id < size; id++) 
+		for (int id = 1; id < size; id++)
 			MPI_Send(&msg, 1, MPI_INT, id, 0, MPI_COMM_WORLD);
 	}
 	else
