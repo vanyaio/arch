@@ -2,8 +2,8 @@
 
 #define N 4
 #define M 4
-#define dimN 2
-#define dimM 2
+#define thx 2
+#define thy 2
 
 __global__ void add( int *a, int *b, int *c )
 {
@@ -25,8 +25,8 @@ int main() {
 		b[i] = 2 * i;
 	}
 
-	dim3 blocks(N / dimN, M / dimM);
-	dim3 threads(dimN, dimM);
+	dim3 blocks(N / thx, M / thy);
+	dim3 threads(thx, thy);
 
 	add<<< blocks, threads >>>(a, b, c);
 	cudaDeviceSynchronize();
